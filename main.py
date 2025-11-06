@@ -1,28 +1,36 @@
-from openai import OpenAI, APIError
-import os, dotenv, json
+from openai import AsyncOpenAI, APIError
+import os, dotenv, asyncio
 
 dotenv.load_dotenv()
 
 key = "MAPLEAI_API_KEY"
+PROMPT = "hi"
 
 if not key in os.environ:
 	raise RuntimeError(f"You must set {key} in the .env to use this tool.")
 
-maple = OpenAI(
+maple = AsyncOpenAI(
 	api_key=os.getenv(key),
 	base_url="https://api.mapleai.de/v1"
 )
 models = maple.models.list()
 
-print("==== MODELS ====")
+async def test_model(model, prompt):
+	try:
+		resp = await maple.chat.completions.create(
+			messages=[{"role": "user", "content": prompt}],
+			model=model.id
+		)
+		return (model.id + ": " + resp.choices[0].message.content[:200])
+	except APIError as e:
+		return (f"{model.id}: Failed ({e.code}): {e.body}")
+
+tasks = []
 for model in models:
 	if "/v1/chat/completions" in model.type:
-		try:
-			resp = maple.chat.completions.create(
-				messages=[{"role": "user", "content": "hi"}],
-				model=model.id
-			)
-			print(model.id + ": " + resp.choices[0].message.content[:200])
-		except APIError as e:
-			text = e.request.content
-			print(f"{model.id}: Failed ({e.code}): {e.body}")
+		tasks.append(test_model(model, PROMPT))
+
+results = asyncio.gather(*tasks)
+print("==== Models ====")
+for result in results:
+	print(result)
