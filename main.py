@@ -13,7 +13,6 @@ maple = AsyncOpenAI(
 	api_key=os.getenv(key),
 	base_url="https://api.mapleai.de/v1"
 )
-models = maple.models.list()
 
 async def test_model(model, prompt):
 	try:
@@ -25,12 +24,18 @@ async def test_model(model, prompt):
 	except APIError as e:
 		return (f"{model.id}: Failed ({e.code}): {e.body}")
 
-tasks = []
-for model in models:
-	if "/v1/chat/completions" in model.type:
-		tasks.append(test_model(model, PROMPT))
+async def main():
+	models = maple.models.list()
+	
+	tasks = []
+	for model in models:
+		if "/v1/chat/completions" in model.type:
+			tasks.append(test_model(model, PROMPT))
 
-results = asyncio.gather(*tasks)
-print("==== Models ====")
-for result in results:
-	print(result)
+	results = asyncio.gather(*tasks)
+	print("==== Models ====")
+	for result in results:
+		print(result)
+
+if __name__ == "__main__":
+	asyncio.run(main())
