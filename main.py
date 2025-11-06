@@ -25,7 +25,7 @@ async def test_model(model, prompt):
 		return (f"{model.id}: Failed ({e.code}): {e.body}")
 
 async def main():
-	models = maple.models.list()
+	models = await maple.models.list()
 	
 	tasks = []
 	for model in models:
