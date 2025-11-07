@@ -20,22 +20,26 @@ async def test_model(model, prompt):
 			messages=[{"role": "user", "content": prompt}],
 			model=model.id
 		)
-		return (model.id + ": " + resp.choices[0].message.content[:200])
+		return {"success": True, "message": resp.choices[0].message.content, "model": model.id}
 	except APIError as e:
-		return (f"{model.id}: Failed ({e.code}): {e.body}")
+		return {"success": False, "message": e.body, "model": model.id}
 
 async def main():
 	models = await maple.models.list()
-	
 	tasks = []
+	data = {}
+
 	async for model in models:
 		if "/v1/chat/completions" in model.type:
+			data[model.id] = "pending"
 			tasks.append(test_model(model, PROMPT))
 
 	results = await asyncio.gather(*tasks)
-	print("==== Models ====")
 	for result in results:
-		print(result)
+		data[result["model"]] = "success" if result["success"] else "failed"
+	
+	print(f"Successful models:\n{", ".join([k for k, v in data.items() if v == "success"])}")
+	print(f"Failed models:\n{", ".join([k for k, v in data.items() if v == "failed"])}")
 
 if __name__ == "__main__":
 	asyncio.run(main())
