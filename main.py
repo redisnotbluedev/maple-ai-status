@@ -32,7 +32,7 @@ async def main():
 		if "/v1/chat/completions" in model.type:
 			tasks.append(test_model(model, PROMPT))
 
-	results = asyncio.gather(*tasks)
+	results = await asyncio.gather(*tasks)
 	print("==== Models ====")
 	for result in results:
 		print(result)
