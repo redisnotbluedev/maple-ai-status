@@ -25,21 +25,25 @@ async def test_model(model, prompt):
 		return {"success": False, "message": e.body, "model": model.id}
 
 async def main():
+	print("Getting models...")
 	models = await maple.models.list()
 	tasks = []
 	data = {}
 
+	print("Filtering models...")
 	async for model in models:
 		if "/v1/chat/completions" in model.type:
 			data[model.id] = "pending"
 			tasks.append(test_model(model, PROMPT))
+	
+	print(f"Queued {len(tasks)} prompts.")
 
 	results = await asyncio.gather(*tasks)
 	for result in results:
 		data[result["model"]] = "success" if result["success"] else "failed"
 	
 	print(f"Successful models:\n{", ".join([k for k, v in data.items() if v == "success"])}")
-	print(f"Failed models:\n{", ".join([k for k, v in data.items() if v == "failed"])}")
+	print(f"\nFailed models:\n{", ".join([k for k, v in data.items() if v == "failed"])}")
 
 if __name__ == "__main__":
 	asyncio.run(main())
