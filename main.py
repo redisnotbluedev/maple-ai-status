@@ -28,7 +28,7 @@ async def main():
 	models = await maple.models.list()
 	
 	tasks = []
-	for model in models:
+	async for model in models:
 		if "/v1/chat/completions" in model.type:
 			tasks.append(test_model(model, PROMPT))
 
