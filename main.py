@@ -1,49 +1,64 @@
-from openai import AsyncOpenAI, APIError
-import os, dotenv, asyncio
+import requests, os, threading, getpass, dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 dotenv.load_dotenv()
+API_KEY = os.environ.get("MAPLEAI_API_KEY") or getpass.getpass("Enter your MapleAI API key: ")
+models = requests.get("https://api.mapleai.de/v1/models").json()['data']
+account_status = requests.get(
+	"https://api.mapleai.de/v1/key-info",
+	headers={"Authorization": f"Bearer {API_KEY}"}
+).json()
 
-key = "MAPLEAI_API_KEY"
-PROMPT = "hi"
+modelstatus = {}
+lock = threading.Lock()
+count = 0
+done = 0
 
-if not key in os.environ:
-	raise RuntimeError(f"You must set {key} in the .env to use this tool.")
+for model in models:
+	if not "/v1/chat/completions" in model['type']:
+		continue
+	count += 1
 
-maple = AsyncOpenAI(
-	api_key=os.getenv(key),
-	base_url="https://api.mapleai.de/v1"
+def check_model(model):
+	payload = {
+		"model": model['id'],
+		"messages": [{"role": "user", "content": "a"}],
+	}
+
+	if model['id'].startswith("gpt-5") or model['id'].startswith("o"):
+		payload["max_completion_tokens"] = 1
+	else:
+		payload["max_tokens"] = 1
+
+	resp = requests.post(
+		"https://api.mapleai.de/v1/chat/completions",
+		json=payload,
+		headers={"Authorization": f"Bearer {API_KEY}"},
+	)
+
+	with lock:
+		modelstatus[model['id']] = (resp.status_code == 200)
+
+remaining = (
+	account_status['rpd'] - account_status['rpd_used'] - count
+	if account_status['rpd'] != "unlimited"
+	else "unlimited"
 )
+print(f"This operation will use {count} requests, leaving you with {remaining} requests left.")
+print("0", end="")
 
-async def test_model(model, prompt):
-	try:
-		resp = await maple.chat.completions.create(
-			messages=[{"role": "user", "content": prompt}],
-			model=model.id
-		)
-		return {"success": True, "message": resp.choices[0].message.content, "model": model.id}
-	except APIError as e:
-		return {"success": False, "message": e.body, "model": model.id}
+with ThreadPoolExecutor(max_workers=15) as executor:
+	futures = [executor.submit(check_model, model) for model in models if "/v1/chat/completions" in model['type']]
+	for future in as_completed(futures):
+		done += 1
+		print("\033[2J\033[H", end="")
+		print(f"{done}/{count}")
+		print("\n\nWorking models:")
+		for model_id, status in modelstatus.items():
+			if status:
+				print(model_id, end=" ")
 
-async def main():
-	print("Getting models...")
-	models = await maple.models.list()
-	tasks = []
-	data = {}
-
-	print("Filtering models...")
-	async for model in models:
-		if "/v1/chat/completions" in model.type:
-			data[model.id] = "pending"
-			tasks.append(test_model(model, PROMPT))
-	
-	print(f"Queued {len(tasks)} prompts.")
-
-	results = await asyncio.gather(*tasks)
-	for result in results:
-		data[result["model"]] = "success" if result["success"] else "failed"
-	
-	print(f"Successful models:\n{", ".join([k for k, v in data.items() if v == "success"])}")
-	print(f"\nFailed models:\n{", ".join([k for k, v in data.items() if v == "failed"])}")
-
-if __name__ == "__main__":
-	asyncio.run(main())
+		print("\n\nNon-working models:")
+		for model_id, status in modelstatus.items():
+			if not status:
+				print(model_id, end=" ")
